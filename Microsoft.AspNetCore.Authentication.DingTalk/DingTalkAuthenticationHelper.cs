@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using System.Text.Json;
 
 namespace Microsoft.AspNetCore.Authentication.DingTalk
 {
@@ -89,29 +89,29 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
         /// <summary>
         /// 获取登录用户的信息.
         /// </summary>
-        public static string GetUserInfo(JObject user) => user["user_info"].ToString();
+        public static string GetUserInfo(JsonDocument user) => user.RootElement.GetString("user_info");
 
         /// <summary>
         /// 获取持续授权码反序列化对象
         /// </summary>
-        public static PersistentCodeDTO GetPersistentCodeInfo(JObject jObject)
+        public static PersistentCodeDTO GetPersistentCodeInfo(JsonDocument jObject)
         {
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<PersistentCodeDTO>(jObject.ToString());
+            return  JsonSerializer.Deserialize<PersistentCodeDTO>(jObject.RootElement.GetRawText());
         }
 
         /// <summary>
         /// 获取持续授权码反序列化对象
         /// </summary>
-        public static SNSTokenDTO GetSNSTokenInfo(JObject jObject)
+        public static SNSTokenDTO GetSNSTokenInfo(JsonDocument jObject)
         {
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<SNSTokenDTO>(jObject.ToString());
+            return  JsonSerializer.Deserialize<SNSTokenDTO>(jObject.RootElement.GetRawText());
         }
         /// <summary>
         /// 获取登录用户信息的反序列化对象
         /// </summary>
-        public static LoginUserInfoDTO GetLoginUserInfo(JObject user)
+        public static LoginUserInfoDTO GetLoginUserInfo(JsonDocument user)
         {
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<LoginUserInfoDTO>(user["user_info"].ToString());
+            return  JsonSerializer.Deserialize<LoginUserInfoDTO>(user.RootElement.GetString("user_info"));
         }        
     }
 }

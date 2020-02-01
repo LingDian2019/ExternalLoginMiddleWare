@@ -10,19 +10,19 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
     public static class WXWorkAuthenticationExtensions
     {
         // 注册中间件时使用，只传入AuthenticationScheme
-        public static AuthenticationBuilder AddWXWorkAuthentication(this AuthenticationBuilder builder)
-            => builder.AddWXWorkAuthentication(WXWorkAuthenticationDefaults.AuthenticationScheme, _ => { });
+        public static AuthenticationBuilder AddWXWork(this AuthenticationBuilder builder)
+            => builder.AddWXWork(WXWorkAuthenticationDefaults.AuthenticationScheme, _ => { });
 
         //注册中间件时使用，传入WXWorkOptions
-        public static AuthenticationBuilder AddWXWorkAuthentication(this AuthenticationBuilder builder, Action<WXWorkAuthenticationOptions> configureOptions)
-            => builder.AddWXWorkAuthentication(WXWorkAuthenticationDefaults.AuthenticationScheme, configureOptions);
+        public static AuthenticationBuilder AddWXWork(this AuthenticationBuilder builder, Action<WXWorkAuthenticationOptions> configureOptions)
+            => builder.AddWXWork(WXWorkAuthenticationDefaults.AuthenticationScheme, configureOptions);
 
         //注册中间件时使用，传入WXWorkOptions的DisplayName与WXWorkOptions
-        public static AuthenticationBuilder AddWXWorkAuthentication(this AuthenticationBuilder builder, string authenticationScheme, Action<WXWorkAuthenticationOptions> configureOptions)
-            => builder.AddWXWorkAuthentication(authenticationScheme, WXWorkAuthenticationDefaults.DisplayName, configureOptions);
+        public static AuthenticationBuilder AddWXWork(this AuthenticationBuilder builder, string authenticationScheme, Action<WXWorkAuthenticationOptions> configureOptions)
+            => builder.AddWXWork(authenticationScheme, WXWorkAuthenticationDefaults.DisplayName, configureOptions);
         
         //注册中间件时使用，传入WXWorkOptions的AauthenticationSchemeDisplayName与WXWorkOptions
-        public static AuthenticationBuilder AddWXWorkAuthentication(this AuthenticationBuilder builder, string authenticationScheme, string displayName, Action<WXWorkAuthenticationOptions> configureOptions)
+        public static AuthenticationBuilder AddWXWork(this AuthenticationBuilder builder, string authenticationScheme, string displayName, Action<WXWorkAuthenticationOptions> configureOptions)
             => builder.AddOAuth<WXWorkAuthenticationOptions, WXWorAuthenticationkHandler>(authenticationScheme, displayName, configureOptions);
     }
 }

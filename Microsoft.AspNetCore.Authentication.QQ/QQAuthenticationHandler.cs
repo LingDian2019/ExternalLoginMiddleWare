@@ -1,47 +1,52 @@
-﻿using Microsoft.AspNetCore.Authentication.OAuth;
-using Microsoft.AspNetCore.Http.Authentication;
+﻿using JetBrains.Annotations;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Security.Claims;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace Microsoft.AspNetCore.Authentication.QQ
 {
-    /// <summary> 
-    /// </summary>
-    class QQAuthenticationHandler : OAuthHandler<QQAuthenticationOptions>
+    public class QQAuthenticationHandler : OAuthHandler<QQAuthenticationOptions>
     {
-        public QQAuthenticationHandler(IOptionsMonitor<QQAuthenticationOptions> options, ILoggerFactory logger, UrlEncoder encoder, ISystemClock clock) : base(options, logger, encoder, clock)
+        public QQAuthenticationHandler(
+            [NotNull] IOptionsMonitor<QQAuthenticationOptions> options,
+            [NotNull] ILoggerFactory logger,
+            [NotNull] UrlEncoder encoder,
+            [NotNull] ISystemClock clock)
+            : base(options, logger, encoder, clock)
         {
         }
 
-        /// <summary>
-        ///  Last Step 
-        /// </summary> 
-        protected override async Task<AuthenticationTicket> CreateTicketAsync(ClaimsIdentity identity, AuthenticationProperties properties, OAuthTokenResponse tokens)
+        protected override async Task<AuthenticationTicket> CreateTicketAsync(
+            [NotNull] ClaimsIdentity identity,
+            [NotNull] AuthenticationProperties properties,
+            [NotNull] OAuthTokenResponse tokens)
         {
-            // 获取用户OpenID
-            var userOpenId = await ObtainUserOpenIdAsync(tokens);
-            if (string.IsNullOrWhiteSpace(userOpenId))
+            string identifier = await GetUserIdentifierAsync(tokens);
+            if (string.IsNullOrEmpty(identifier))
             {
-                throw new HttpRequestException("User openId was not found.");
+                throw new HttpRequestException("An error occurred while retrieving the user identifier.");
             }
 
-            // 获取用户基本信息
-            var address = QueryHelpers.AddQueryString(Options.UserInformationEndpoint, new Dictionary<string, string>
+            identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, identifier, ClaimValueTypes.String, Options.ClaimsIssuer));
+
+            string address = QueryHelpers.AddQueryString(Options.UserInformationEndpoint, new Dictionary<string, string>
             {
-                ["access_token"] = tokens.AccessToken,
                 ["oauth_consumer_key"] = Options.ClientId,
-                ["openid"] = userOpenId,
+                ["access_token"] = tokens.AccessToken,
+                ["openid"] = identifier,
             });
 
-            var response = await Backchannel.GetAsync(address);
+            using var response = await Backchannel.GetAsync(address);
             if (!response.IsSuccessStatusCode)
             {
                 Logger.LogError("An error occurred while retrieving the user profile: the remote server " +
@@ -53,63 +58,41 @@ namespace Microsoft.AspNetCore.Authentication.QQ
                 throw new HttpRequestException("An error occurred while retrieving user information.");
             }
 
-            var payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-            if (payload.Value<int>("ret") != 0)
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+            int status = payload.RootElement.GetProperty("ret").GetInt32();
+            if (status != 0)
             {
                 Logger.LogError("An error occurred while retrieving the user profile: the remote server " +
-                                "returned a {Status} response with the following payload: {Headers} {Body}.",
-                                /* Status: */ response.StatusCode,
-                                /* Headers: */ response.Headers.ToString(),
-                                /* Body: */ await response.Content.ReadAsStringAsync());
+                                "returned a {Status} response with the following message: {Message}.",
+                                /* Status: */ status,
+                                /* Message: */ payload.RootElement.GetString("msg"));
 
                 throw new HttpRequestException("An error occurred while retrieving user information.");
             }
 
-            identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, userOpenId, Options.ClaimsIssuer));
-            identity.AddClaim(new Claim(ClaimTypes.Name, QQAuthenticationHelper.GetNickname(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim(ClaimTypes.Gender, QQAuthenticationHelper.GetGender(payload), Options.ClaimsIssuer));
-
-            identity.AddClaim(new Claim("urn:qq:openid", userOpenId, Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:figureurl", QQAuthenticationHelper.GetFigureUrl(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:figureurl_1", QQAuthenticationHelper.GetFigureUrl_1(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:figureurl_2", QQAuthenticationHelper.GetFigureUrl_2(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:figureurl_qq_1", QQAuthenticationHelper.GetFigureUrl_QQ_1(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:figureurl_qq_2", QQAuthenticationHelper.GetFigureUrl_QQ_2(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:gender", QQAuthenticationHelper.GetGender(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:is_yellow_vip", QQAuthenticationHelper.GetIsYellowVip(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:vip", QQAuthenticationHelper.GetIsVip(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:yellow_vip_level", QQAuthenticationHelper.GetYellowVipLevel(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:level", QQAuthenticationHelper.GetLevel(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:qq:is_yellow_year_vip", QQAuthenticationHelper.GetIsYellowYearVip(payload), Options.ClaimsIssuer));
-
-            identity.AddClaim(new Claim("urn:qq:user_info", payload.ToString(), Options.ClaimsIssuer));
-
-            var context = new OAuthCreatingTicketContext(new ClaimsPrincipal(identity), properties, Context, Scheme, Options, Backchannel, tokens, payload);
+            var principal = new ClaimsPrincipal(identity);
+            var context = new OAuthCreatingTicketContext(principal, properties, Context, Scheme, Options, Backchannel, tokens, payload.RootElement);
             context.RunClaimActions();
 
-            await Events.CreatingTicket(context);
-
+            await Options.Events.CreatingTicket(context);
             return new AuthenticationTicket(context.Principal, context.Properties, Scheme.Name);
         }
 
-
-
-        /// <summary>
-        ///  Step2：通过Authorization Code获取Access Token
-        ///  http://wiki.connect.qq.com/%E4%BD%BF%E7%94%A8authorization_code%E8%8E%B7%E5%8F%96access_token
-        /// </summary> 
-        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync(string code, string redirectUri)
+        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync([NotNull] OAuthCodeExchangeContext context)
         {
-            var address = QueryHelpers.AddQueryString(Options.TokenEndpoint, new Dictionary<string, string>()
+            string address = QueryHelpers.AddQueryString(Options.TokenEndpoint, new Dictionary<string, string>()
             {
                 ["client_id"] = Options.ClientId,
                 ["client_secret"] = Options.ClientSecret,
-                ["code"] = code,
+                ["redirect_uri"] = context.RedirectUri,
+                ["code"] = context.Code,
                 ["grant_type"] = "authorization_code",
-                ["redirect_uri"] = redirectUri,
             });
 
-            var response = await Backchannel.GetAsync(address);
+            using var request = new HttpRequestMessage(HttpMethod.Get, address);
+
+            using var response = await Backchannel.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, Context.RequestAborted);
             if (!response.IsSuccessStatusCode)
             {
                 Logger.LogError("An error occurred while retrieving an access token: the remote server " +
@@ -121,89 +104,62 @@ namespace Microsoft.AspNetCore.Authentication.QQ
                 return OAuthTokenResponse.Failed(new Exception("An error occurred while retrieving an access token."));
             }
 
-            // 成功：  access_token=FE04************************CCE2&expires_in=7776000&refresh_token=88E4************************BE14
-            // 失败：  callback( {"error":123456 ,"error_description":"**************"} );
-
-            var responseString = await response.Content.ReadAsStringAsync();
-
-            if (responseString.StartsWith("callback"))
-            {
-                Logger.LogError("An error occurred while retrieving an access token: the remote server " +
-                                "returned a {Status} response with the following payload: {Headers} {Body}.",
-                                /* Status: */ response.StatusCode,
-                                /* Headers: */ response.Headers.ToString(),
-                                /* Body: */ await response.Content.ReadAsStringAsync());
-
-                return OAuthTokenResponse.Failed(new Exception("An error occurred while retrieving an access token."));
-            }
-
-            JObject payload = new JObject();
-
-            var responseParams = responseString.Split('&');
-
-            foreach (var parm in responseParams)
-            {
-                var kv = parm.Split('=');
-
-                payload[kv[0]] = kv[1];
-            }
+            var content = QueryHelpers.ParseQuery(await response.Content.ReadAsStringAsync());
+            var payload = await CopyPayloadAsync(content);
 
             return OAuthTokenResponse.Success(payload);
         }
 
-        /// <summary>
-        ///  Step3：通过Access Token获取OpenId
-        /// </summary>
-        /// <param name="tokens"></param>
-        protected async Task<string> ObtainUserOpenIdAsync(OAuthTokenResponse tokens)
+        private async Task<string> GetUserIdentifierAsync(OAuthTokenResponse tokens)
         {
-            var address = QueryHelpers.AddQueryString(Options.OpenIdEndpoint, new Dictionary<string, string>
-            {
-                ["access_token"] = tokens.AccessToken,
-            });
+            string address = QueryHelpers.AddQueryString(Options.UserIdentificationEndpoint, "access_token", tokens.AccessToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, address);
 
-            var response = await Backchannel.GetAsync(address);
+            using var response = await Backchannel.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, Context.RequestAborted);
             if (!response.IsSuccessStatusCode)
             {
-                Logger.LogError("An error occurred while retrieving the user open id: the remote server " +
+                Logger.LogError("An error occurred while retrieving the user identifier: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
                                 /* Status: */ response.StatusCode,
                                 /* Headers: */ response.Headers.ToString(),
                                 /* Body: */ await response.Content.ReadAsStringAsync());
 
-                throw new HttpRequestException("An error occurred while retrieving user information.");
+                throw new HttpRequestException("An error occurred while retrieving the user identifier.");
             }
 
-            string responseString = await response.Content.ReadAsStringAsync();
+            string body = await response.Content.ReadAsStringAsync();
 
-            // callback( {"client_id":"YOUR_APPID","openid":"YOUR_OPENID"} );\n
+            int index = body.IndexOf("{");
+            if (index > 0)
+            {
+                body = body.Substring(index, body.LastIndexOf("}") - index + 1);
+            }
 
-            responseString = responseString.Remove(0, 9);
-            responseString = responseString.Remove(responseString.Length - 3);
+            using var payload = JsonDocument.Parse(body);
 
-            JObject oauth2Token = JObject.Parse(responseString);
-
-            return oauth2Token.Value<string>("openid");
+            return payload.RootElement.GetString("openid");
         }
 
-        protected override string FormatScope()
+        protected override string FormatScope() => string.Join(",", Options.Scope);
+
+        private async Task<JsonDocument> CopyPayloadAsync(Dictionary<string, StringValues> content)
         {
-            return string.Join(",", Options.Scope);
+            var bufferWriter = new ArrayBufferWriter<byte>();
+
+            await using (var writer = new Utf8JsonWriter(bufferWriter))
+            {
+                writer.WriteStartObject();
+
+                foreach (var item in content)
+                {
+                    writer.WriteString(item.Key, item.Value);
+                }
+
+                writer.WriteEndObject();
+                await writer.FlushAsync();
+            }
+
+            return JsonDocument.Parse(bufferWriter.WrittenMemory);
         }
-
-        /// <summary>
-        ///  Step1：获取Authorization Code 
-        ///  构建请求地址
-        /// </summary>
-        /// <param name="properties"></param>
-        /// <param name="redirectUri"></param>
-        /// <returns></returns>
-        protected override string BuildChallengeUrl(AuthenticationProperties properties, string redirectUri)
-        {
-            var url = base.BuildChallengeUrl(properties, redirectUri);
-            return url;
-        }
-
-
     }
 }

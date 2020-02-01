@@ -1,8 +1,4 @@
 ﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Authentication;
-using Microsoft.AspNetCore.Http.Features.Authentication;
-using Newtonsoft.Json.Linq;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -44,14 +40,14 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
 
             if (!string.IsNullOrEmpty(userInfo.Value))
             {
-                var jObject = JObject.Parse(userInfo.Value);
+                //var jObject = JObject.Parse(userInfo.Value);
 
                 Dictionary<string, string> dict = new Dictionary<string, string>();
 
-                foreach (var item in jObject)
-                {
-                    dict[item.Key] = item.Value?.ToString();
-                }
+                //foreach (var item in jObject)
+                //{
+                //    dict[item.Key] = item.Value?.ToString();
+                //}
 
                 return dict;
             }

@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using System.Text.Json;
 
 namespace Microsoft.AspNetCore.Authentication.WXWork
 {
@@ -60,37 +60,41 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
         /// <summary>
         /// 获取登录用户的类型：1.创建者 2.内部系统管理员 3.外部系统管理员 4.分级管理员 5.成员
         /// </summary>
-        public static string GetUserType(JObject user) => user.Value<string>("usertype");
+        public static string GetUserType(JsonDocument user) => user.RootElement.GetString("usertype");
 
         /// <summary>
         /// 获取登录用户的信息.
         /// </summary>
-        public static string GetUserInfo(JObject user) => user["user_info"].ToString();
+        public static string GetUserInfo(JsonDocument user) => user.RootElement.GetString("user_info");
 
         /// <summary>
         /// 获取登录用户信息的反序列化对象
         /// </summary>
-        public static LoginUserInfoDTO GetLoginUserInfo(JObject user)
+        public static LoginUserInfoDTO GetLoginUserInfo(JsonDocument user)
         {
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<LoginUserInfoDTO>(user["user_info"].ToString());
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            return JsonSerializer.Deserialize<LoginUserInfoDTO>(GetUserInfo(user),options);
         }
 
         /// <summary>
         /// 获取授权方企业id
         /// </summary>
-        public static string GetCorpInfo(JObject user) => user.Value<string>("corp_info");
+        public static string GetCorpInfo(JsonDocument user) => user.RootElement.GetString("corp_info");
 
         /// <summary>
         /// 获取该管理员在该提供商中能使用的应用列表，当登录用户为管理员时返回
         /// </summary>
-        public static string GetAgent(JObject user)
+        public static string GetAgent(JsonDocument user)
         {
-            var value = user.Value<JArray>("agent");
+            var value = user.RootElement.GetString("agent");
             if (value == null)
             {
                 return null;
             }
-            return string.Join(",", value.ToObject<string[]>());
+            return value;
         }
     }
 }

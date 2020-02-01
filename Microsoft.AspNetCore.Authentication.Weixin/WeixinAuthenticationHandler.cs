@@ -1,41 +1,62 @@
-﻿using Microsoft.AspNetCore.Authentication.OAuth;
-using Microsoft.AspNetCore.Http.Authentication;
+﻿using JetBrains.Annotations;
+using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Security.Claims;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace Microsoft.AspNetCore.Authentication.Weixin
 {
-    class WeixinAuthenticationHandler : OAuthHandler<WeixinAuthenticationOptions>
+    public class WeixinAuthenticationHandler : OAuthHandler<WeixinAuthenticationOptions>
     {
-        public WeixinAuthenticationHandler(IOptionsMonitor<WeixinAuthenticationOptions> options, ILoggerFactory logger, UrlEncoder encoder, ISystemClock clock) : base(options, logger, encoder, clock)
+        public WeixinAuthenticationHandler(
+            [NotNull] IOptionsMonitor<WeixinAuthenticationOptions> options,
+            [NotNull] ILoggerFactory logger,
+            [NotNull] UrlEncoder encoder,
+            [NotNull] ISystemClock clock)
+            : base(options, logger, encoder, clock)
         {
         }
 
-        /// <summary>
-        ///  Last step:
-        ///  create ticket from remote server
-        /// </summary>
-        /// <param name="identity"></param>
-        /// <param name="properties"></param>
-        /// <param name="tokens"></param>
-        /// <returns></returns>
-        protected override async Task<AuthenticationTicket> CreateTicketAsync(ClaimsIdentity identity, AuthenticationProperties properties, OAuthTokenResponse tokens)
+        private const string OauthState = "_oauthstate";
+        private const string State = "state";
+
+        protected override async Task<HandleRequestResult> HandleRemoteAuthenticateAsync()
         {
-            var address = QueryHelpers.AddQueryString(Options.UserInformationEndpoint, new Dictionary<string, string>
+            if (!IsWeixinAuthorizationEndpointInUse())
+            {
+                if (Request.Query.TryGetValue(OauthState, out var stateValue))
+                {
+                    var query = Request.Query.ToDictionary(c => c.Key, c => c.Value, StringComparer.OrdinalIgnoreCase);
+                    if (query.TryGetValue(State, out var _))
+                    {
+                        query[State] = stateValue;
+                        Request.QueryString = QueryString.Create(query);
+                    }
+                }
+            }
+            return await base.HandleRemoteAuthenticateAsync();
+        }
+        protected override async Task<AuthenticationTicket> CreateTicketAsync(
+            [NotNull] ClaimsIdentity identity,
+            [NotNull] AuthenticationProperties properties,
+            [NotNull] OAuthTokenResponse tokens)
+        {
+            string address = QueryHelpers.AddQueryString(Options.UserInformationEndpoint, new Dictionary<string, string>
             {
                 ["access_token"] = tokens.AccessToken,
-                ["openid"] = tokens.Response.Value<string>("openid")
+                ["openid"] = tokens.Response.RootElement.GetString("openid")
             });
 
-            var response = await Backchannel.GetAsync(address);
+            using var response = await Backchannel.GetAsync(address);
             if (!response.IsSuccessStatusCode)
             {
                 Logger.LogError("An error occurred while retrieving the user profile: the remote server " +
@@ -47,8 +68,8 @@ namespace Microsoft.AspNetCore.Authentication.Weixin
                 throw new HttpRequestException("An error occurred while retrieving user information.");
             }
 
-            var payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-            if (!string.IsNullOrEmpty(payload.Value<string>("errcode")))
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (!string.IsNullOrEmpty(payload.RootElement.GetString("errcode")))
             {
                 Logger.LogError("An error occurred while retrieving the user profile: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
@@ -59,40 +80,25 @@ namespace Microsoft.AspNetCore.Authentication.Weixin
                 throw new HttpRequestException("An error occurred while retrieving user information.");
             }
 
-            identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, WeixinAuthenticationHelper.GetUnionid(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim(ClaimTypes.Name, WeixinAuthenticationHelper.GetNickname(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim(ClaimTypes.Gender, WeixinAuthenticationHelper.GetSex(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim(ClaimTypes.Country, WeixinAuthenticationHelper.GetCountry(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:weixin:openid", WeixinAuthenticationHelper.GetOpenId(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:weixin:province", WeixinAuthenticationHelper.GetProvince(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:weixin:city", WeixinAuthenticationHelper.GetCity(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:weixin:headimgurl", WeixinAuthenticationHelper.GetHeadimgUrl(payload), Options.ClaimsIssuer));
-            identity.AddClaim(new Claim("urn:weixin:privilege", WeixinAuthenticationHelper.GetPrivilege(payload), Options.ClaimsIssuer));
-
-            identity.AddClaim(new Claim("urn:weixin:user_info", payload.ToString(), Options.ClaimsIssuer));
-
-            var context = new OAuthCreatingTicketContext(new ClaimsPrincipal(identity), properties, Context, Scheme, Options, Backchannel, tokens, payload);
+            var principal = new ClaimsPrincipal(identity);
+            var context = new OAuthCreatingTicketContext(principal, properties, Context, Scheme, Options, Backchannel, tokens, payload.RootElement);
             context.RunClaimActions();
 
-            await Events.CreatingTicket(context);
-
+            await Options.Events.CreatingTicket(context);
             return new AuthenticationTicket(context.Principal, context.Properties, Scheme.Name);
         }
 
-        /// <summary>
-        /// Step 2：通过code获取access_token
-        /// </summary> 
-        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync(string code, string redirectUri)
+        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync([NotNull] OAuthCodeExchangeContext context)
         {
-            var address = QueryHelpers.AddQueryString(Options.TokenEndpoint, new Dictionary<string, string>()
+            string address = QueryHelpers.AddQueryString(Options.TokenEndpoint, new Dictionary<string, string>()
             {
                 ["appid"] = Options.ClientId,
                 ["secret"] = Options.ClientSecret,
-                ["code"] = code,
+                ["code"] = context.Code,
                 ["grant_type"] = "authorization_code"
             });
 
-            var response = await Backchannel.GetAsync(address);
+            using var response = await Backchannel.GetAsync(address);
             if (!response.IsSuccessStatusCode)
             {
                 Logger.LogError("An error occurred while retrieving an access token: the remote server " +
@@ -104,8 +110,8 @@ namespace Microsoft.AspNetCore.Authentication.Weixin
                 return OAuthTokenResponse.Failed(new Exception("An error occurred while retrieving an access token."));
             }
 
-            var payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-            if (!string.IsNullOrEmpty(payload.Value<string>("errcode")))
+            var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (!string.IsNullOrEmpty(payload.RootElement.GetString("errcode")))
             {
                 Logger.LogError("An error occurred while retrieving an access token: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
@@ -118,25 +124,40 @@ namespace Microsoft.AspNetCore.Authentication.Weixin
             return OAuthTokenResponse.Success(payload);
         }
 
-        /// <summary>
-        ///  Step 1：请求CODE 
-        ///  构建用户授权地址
-        /// </summary> 
         protected override string BuildChallengeUrl(AuthenticationProperties properties, string redirectUri)
         {
-            return QueryHelpers.AddQueryString(Options.AuthorizationEndpoint, new Dictionary<string, string>
+            string stateValue = Options.StateDataFormat.Protect(properties);
+            bool addRedirectHash = false;
+
+            if (!IsWeixinAuthorizationEndpointInUse())
+            {
+                //Store state in redirectUri when authorizing Wechat Web pages to prevent "too long state parameters" error
+                redirectUri = QueryHelpers.AddQueryString(redirectUri, OauthState, stateValue);
+                addRedirectHash = true;
+            }
+
+            redirectUri = QueryHelpers.AddQueryString(Options.AuthorizationEndpoint, new Dictionary<string, string>
             {
                 ["appid"] = Options.ClientId,
                 ["scope"] = FormatScope(),
                 ["response_type"] = "code",
                 ["redirect_uri"] = redirectUri,
-                ["state"] = Options.StateDataFormat.Protect(properties)
+                [State] = addRedirectHash ? OauthState : stateValue
             });
+
+            if (addRedirectHash)
+            {
+                // The parameters necessary for Web Authorization of Wechat
+                redirectUri += "#wechat_redirect";
+            }
+            return redirectUri;
         }
 
-        protected override string FormatScope()
+        protected override string FormatScope() => string.Join(",", Options.Scope);
+
+        private bool IsWeixinAuthorizationEndpointInUse()
         {
-            return string.Join(",", Options.Scope);
+            return string.Equals(Options.AuthorizationEndpoint, WeixinAuthenticationDefaults.AuthorizationEndpoint, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

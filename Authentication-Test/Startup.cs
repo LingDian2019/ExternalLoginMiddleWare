@@ -1,18 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Authentication_Test.Data;
+﻿using Authentication_Test.Data;
 using Authentication_Test.Models;
 using Authentication_Test.Services;
-using Microsoft.AspNetCore.Authentication.WXWork;
 using Microsoft.AspNetCore.Authentication.DingTalk;
+using Microsoft.AspNetCore.Authentication.WXWork;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Authentication_Test
 {
@@ -39,23 +36,23 @@ namespace Authentication_Test
             services.AddTransient<IEmailSender, EmailSender>();
             //注册 认证中间件
             services.AddAuthentication()
-                .AddQQAuthentication(options =>
+                .AddQQ(options =>
                 {
                     options.ClientId = Configuration.GetValue<string>("Authentication:QQ:ClientId");
                     options.ClientSecret = Configuration.GetValue<string>("Authentication:QQ:ClientSecret");
                 })
-                .AddWeixinAuthentication(options =>
+                .AddWeixin(options =>
                 {
                     options.ClientId = Configuration.GetValue<string>("Authentication:Weixin:ClientId");
                     options.ClientSecret = Configuration.GetValue<string>("Authentication:Weixin:ClientSecret");
 
                 })
-                .AddWXWorkAuthentication(options =>
+                .AddWXWork(options =>
                 {
                     options.ClientId = Configuration.GetValue<string>("Authentication:WXWork:ClientId");
                     options.ClientSecret = Configuration.GetValue<string>("Authentication:WXWork:ClientSecret");
                 })
-                .AddDingTalkAuthentication(options =>
+                .AddDingTalk(options =>
                 {
                     options.ClientId = Configuration.GetValue<string>("Authentication:DingTalk:ClientId");
                     options.ClientSecret = Configuration.GetValue<string>("Authentication:DingTalk:ClientSecret");
@@ -66,12 +63,12 @@ namespace Authentication_Test
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage(); 
-                app.UseDatabaseErrorPage();
+                //app.UseDatabaseErrorPage();
             }
             else
             {
@@ -79,16 +76,15 @@ namespace Authentication_Test
             }
 
             app.UseStaticFiles();
+            app.UseRouting();
             // 启用 认证中间件
             app.UseAuthentication();
-
+            app.UseAuthorization();
             app.UseCookiePolicy();
 
-            app.UseMvc(routes =>
+            app.UseEndpoints(routes =>
             {
-                routes.MapRoute(
-                    name: "default",
-                    template: "{controller=Home}/{action=Index}/{id?}");
+                routes.MapDefaultControllerRoute();
             });
         }
     }

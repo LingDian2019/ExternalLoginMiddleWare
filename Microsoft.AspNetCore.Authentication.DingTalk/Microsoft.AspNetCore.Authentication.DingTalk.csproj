@@ -1,14 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.1</TargetFramework>
-    <Description>阿里钉钉.net core第三方登录中间件。</Description>
-    <PackageProjectUrl>https://github.com/Kiakaa/ExternalLoginMiddleWare</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/Kiakaa/ExternalLoginMiddleWare</RepositoryUrl>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <PackageId>Weyhd.AspNetCore.Authentication.DingTalk</PackageId>
+    <Authors>Weyhd</Authors>
+    <Product>Weyhd.AspNetCore.Authentication.DingTalk</Product>
+    <Description>适用于ASP.NET Core3.1 的 OAuth2 认证中间件，使Web应用程序支持用DingTalk快捷登录。</Description>
+    <RepositoryType>github</RepositoryType>
+    <PackageTags>DingTalk, security, aspnet core, authentication</PackageTags>
+    <Version>3.1.0</Version>  
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OAuth" Version="2.0.0" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="JetBrains.Annotations" Version="2019.1.3" PrivateAssets="All" />
   </ItemGroup>
-
 </Project>

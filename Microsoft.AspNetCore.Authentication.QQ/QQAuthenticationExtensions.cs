@@ -1,82 +1,75 @@
-﻿using Microsoft.AspNetCore.Authentication;
+﻿using JetBrains.Annotations;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.QQ;
 using Microsoft.Extensions.Options;
 using System;
+
 
 namespace Microsoft.Extensions.DependencyInjection
 {
     /// <summary>
     /// 
     /// </summary>
-    public static class QQAuthenticationExtensions
-    {
-        /// <summary> 
-        /// </summary>
-        public static AuthenticationBuilder AddQQAuthentication(this AuthenticationBuilder builder)
-        {
-            return builder.AddQQAuthentication(QQAuthenticationDefaults.AuthenticationScheme, QQAuthenticationDefaults.DisplayName, options => { });
-        }
-
-        /// <summary> 
-        /// </summary>
-        public static AuthenticationBuilder AddQQAuthentication(this AuthenticationBuilder builder, Action<QQAuthenticationOptions> configureOptions)
-        {
-            return builder.AddQQAuthentication(QQAuthenticationDefaults.AuthenticationScheme, QQAuthenticationDefaults.DisplayName, configureOptions);
-        }
-
-        /// <summary> 
-        /// </summary>
-        public static AuthenticationBuilder AddQQAuthentication(this AuthenticationBuilder builder, string authenticationScheme, Action<QQAuthenticationOptions> configureOptions)
-        {
-            return builder.AddQQAuthentication(authenticationScheme, QQAuthenticationDefaults.DisplayName, configureOptions);
-        }
-
-        /// <summary> 
-        /// </summary>
-        public static AuthenticationBuilder AddQQAuthentication(this AuthenticationBuilder builder, string authenticationScheme, string displayName, Action<QQAuthenticationOptions> configureOptions)
-        {
-            return builder.AddOAuth<QQAuthenticationOptions, QQAuthenticationHandler>(authenticationScheme, displayName, configureOptions);
-        }
-    }
-}
-
-#region old code 
-
-
-
-namespace Microsoft.AspNetCore.Builder
-{
     /// <summary>
     /// Extension methods to add QQ authentication capabilities to an HTTP application pipeline.
     /// </summary>
     public static class QQAuthenticationExtensions
     {
         /// <summary>
-        /// Adds the <see cref="QQAuthenticationMiddleware"/> middleware to the specified
-        /// <see cref="IApplicationBuilder"/>, which enables QQ authentication capabilities.
+        /// Adds <see cref="QQAuthenticationHandler"/> to the specified
+        /// <see cref="AuthenticationBuilder"/>, which enables QQ authentication capabilities.
         /// </summary>
-        /// <param name="app">The <see cref="IApplicationBuilder"/> to add the middleware to.</param>
-        /// <param name="options">A <see cref="QQAuthenticationOptions"/> that specifies options for the middleware.</param>
-        /// <returns>A reference to this instance after the operation has completed.</returns>
-        public static IApplicationBuilder UseQQAuthentication(this IApplicationBuilder app, QQAuthenticationOptions options)
+        /// <param name="builder">The authentication builder.</param>
+        /// <returns>The <see cref="AuthenticationBuilder"/>.</returns>
+        public static AuthenticationBuilder AddQQ([NotNull] this AuthenticationBuilder builder)
         {
-            throw new NotSupportedException("This method is no longer supported, see https://go.microsoft.com/fwlink/?linkid=845470");
+            return builder.AddQQ(QQAuthenticationDefaults.AuthenticationScheme, options => { });
         }
 
         /// <summary>
-        /// Adds the <see cref="QQAuthenticationMiddleware"/> middleware to the specified
-        /// <see cref="IApplicationBuilder"/>, which enables QQ authentication capabilities.
+        /// Adds <see cref="QQAuthenticationHandler"/> to the specified
+        /// <see cref="AuthenticationBuilder"/>, which enables QQ authentication capabilities.
         /// </summary>
-        /// <param name="app">The <see cref="IApplicationBuilder"/> to add the middleware to.</param>
-        /// <param name="configuration">An action delegate to configure the provided <see cref="QQAuthenticationOptions"/>.</param>
-        /// <returns>A reference to this instance after the operation has completed.</returns>
-        public static IApplicationBuilder UseQQAuthentication(this IApplicationBuilder app, Action<QQAuthenticationOptions> configuration)
+        /// <param name="builder">The authentication builder.</param>
+        /// <param name="configuration">The delegate used to configure the OpenID 2.0 options.</param>
+        /// <returns>The <see cref="AuthenticationBuilder"/>.</returns>
+        public static AuthenticationBuilder AddQQ(
+            [NotNull] this AuthenticationBuilder builder,
+            [NotNull] Action<QQAuthenticationOptions> configuration)
         {
-            throw new NotSupportedException("This method is no longer supported, see https://go.microsoft.com/fwlink/?linkid=845470");
+            return builder.AddQQ(QQAuthenticationDefaults.AuthenticationScheme, configuration);
+        }
+
+        /// <summary>
+        /// Adds <see cref="QQAuthenticationHandler"/> to the specified
+        /// <see cref="AuthenticationBuilder"/>, which enables QQ authentication capabilities.
+        /// </summary>
+        /// <param name="builder">The authentication builder.</param>
+        /// <param name="scheme">The authentication scheme associated with this instance.</param>
+        /// <param name="configuration">The delegate used to configure the QQ options.</param>
+        /// <returns>The <see cref="AuthenticationBuilder"/>.</returns>
+        public static AuthenticationBuilder AddQQ(
+            [NotNull] this AuthenticationBuilder builder, [NotNull] string scheme,
+            [NotNull] Action<QQAuthenticationOptions> configuration)
+        {
+            return builder.AddQQ(scheme, QQAuthenticationDefaults.DisplayName, configuration);
+        }
+
+        /// <summary>
+        /// Adds <see cref="QQAuthenticationHandler"/> to the specified
+        /// <see cref="AuthenticationBuilder"/>, which enables QQ authentication capabilities.
+        /// </summary>
+        /// <param name="builder">The authentication builder.</param>
+        /// <param name="scheme">The authentication scheme associated with this instance.</param>
+        /// <param name="caption">The optional display name associated with this instance.</param>
+        /// <param name="configuration">The delegate used to configure the QQ options.</param>
+        /// <returns>The <see cref="AuthenticationBuilder"/>.</returns>
+        public static AuthenticationBuilder AddQQ(
+            [NotNull] this AuthenticationBuilder builder,
+            [NotNull] string scheme, [CanBeNull] string caption,
+            [NotNull] Action<QQAuthenticationOptions> configuration)
+        {
+            return builder.AddOAuth<QQAuthenticationOptions, QQAuthenticationHandler>(scheme, caption, configuration);
         }
     }
 }
-
-
-
-#endregion

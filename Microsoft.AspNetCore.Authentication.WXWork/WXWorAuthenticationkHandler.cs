@@ -1,19 +1,17 @@
-﻿using Microsoft.AspNetCore.Authentication.OAuth;
+﻿using JetBrains.Annotations;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
-using Microsoft.Net.Http.Headers;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Microsoft.AspNetCore.Authentication.WXWork
@@ -103,10 +101,10 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
             }
             #endregion
 
-
             #region 步骤2，使用服务提供商的coprid和ProviderSecret，取得供应商Token：provider_access_token，再使用此provider_access_token+用户授权码auth_code获取用户基本信息
             // 此处tokens为供应商的provider_access_token
-            var tokens = await ExchangeCodeAsync(code, BuildRedirectUri(Options.CallbackPath));
+            var codeExchangeContext = new OAuthCodeExchangeContext(properties, code, BuildRedirectUri(Options.CallbackPath));
+            var tokens = await ExchangeCodeAsync(codeExchangeContext);
             if (tokens.Error != null)
             {
                 return HandleRequestResult.Fail(tokens.Error);
@@ -120,8 +118,8 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
                     }}
                  */
             #endregion
-            tokens.AccessToken = tokens.Response["provider_access_token"]?.ToString();
-            tokens.ExpiresIn = tokens.Response["expires_in"]?.ToString();
+            tokens.AccessToken = tokens.Response.RootElement.GetString("provider_access_token");
+            tokens.ExpiresIn = tokens.Response.RootElement.GetString("expires_in");
             if (string.IsNullOrEmpty(tokens.AccessToken))
             {
                 return HandleRequestResult.Fail("Failed to retrieve access token.");
@@ -181,14 +179,14 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
         /// <summary>
         /// 第二步：获取供应商provider_access_token。获取使用使用服务供应商coprid和ProviderSecret，获取供应商的provider_access_token
         /// </summary>
-        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync(string code, string redirectUri)
+        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync([NotNull] OAuthCodeExchangeContext context)
         {
             //1，设置post参数。获取供应商provider_access_token需要的post参数
             Dictionary<string, string> param = new Dictionary<string, string>();
             param.Add("corpid", Options.ClientId);
             param.Add("provider_secret", Options.ClientSecret);
 
-            var stringContent = new StringContent(JsonConvert.SerializeObject(param), Encoding.UTF8, "application/json");
+            var stringContent = new StringContent(JsonSerializer.Serialize(param), Encoding.UTF8, "application/json");
             //2，发送请求并取得数据
             var response = await Backchannel.PostAsync(Options.TokenEndpoint, stringContent);
             //3，判断provider_access_token是否获取成功
@@ -202,8 +200,8 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
 
                 return OAuthTokenResponse.Failed(new Exception("An error occurred while retrieving an access token."));
             }
-            var payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-            if (!string.IsNullOrEmpty(payload.Value<string>("errcode")))
+            var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (!string.IsNullOrEmpty(payload.RootElement.GetString("errcode")))
             {
                 Logger.LogError("An error occurred while retrieving an access token: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
@@ -237,7 +235,7 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
             // 获取用户基本信息的post参数:用户授权码
             Dictionary<string, string> param = new Dictionary<string, string>();
             param.Add("auth_code", code);
-            var stringContent = new StringContent(JsonConvert.SerializeObject(param), Encoding.UTF8, "application/json");
+            var stringContent = new StringContent(JsonSerializer.Serialize(param), Encoding.UTF8, "application/json");
             #endregion
 
             #region 2，发送请求并取得数据
@@ -256,8 +254,8 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
                 throw new HttpRequestException("An error occurred while retrieving user information.");
             }
 
-            var payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-            if (!string.IsNullOrEmpty(payload.Value<string>("errcode")))
+            var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (!string.IsNullOrEmpty(payload.RootElement.GetString("errcode")))
             {
                 Logger.LogError("An error occurred while retrieving the user profile: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
@@ -300,7 +298,7 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
             identity.AddClaim(new Claim("urn:wxwork:avatar", loginUserInfoDTO.Avatar, Options.ClaimsIssuer));
             identity.AddClaim(new Claim("urn:wxwork:agent", WXWorkAuthenticationHelper.GetAgent(payload), Options.ClaimsIssuer));
             //5，初始化一个OAuth正在创建ticket的上下文
-            var context = new OAuthCreatingTicketContext(new ClaimsPrincipal(identity), properties, Context, Scheme, Options, Backchannel, tokens, payload);
+            var context = new OAuthCreatingTicketContext(new ClaimsPrincipal(identity), properties, Context, Scheme, Options, Backchannel, tokens, payload.RootElement);
             context.RunClaimActions();
             //6，Events：OAuthEvents。Handler调用事件上的方法，这些方法（在发生处理的某些点上（提供对应用程序）的控制）
             //   CreatingTicket：在提供程序成功验证用户后调用。

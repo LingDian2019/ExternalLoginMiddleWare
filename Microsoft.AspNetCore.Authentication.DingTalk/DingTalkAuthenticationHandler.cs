@@ -1,19 +1,17 @@
-﻿using Microsoft.AspNetCore.Authentication.OAuth;
+﻿using JetBrains.Annotations;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
-using Microsoft.Net.Http.Headers;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Microsoft.AspNetCore.Authentication.DingTalk
@@ -122,7 +120,9 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
             #endregion
 
             #region 步骤2，通过appid,appsecret换取access_token地址。
-            var tokens = await ExchangeCodeAsync(code, BuildRedirectUri(Options.CallbackPath));
+            var codeExchangeContext = new OAuthCodeExchangeContext(properties, code, BuildRedirectUri(Options.CallbackPath));
+
+            var tokens = await ExchangeCodeAsync(codeExchangeContext);
             if (tokens.Error != null)
             {
                 return HandleRequestResult.Fail(tokens.Error);
@@ -187,7 +187,7 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
         /// <summary>
         /// 第二步：通过appid,appsecret换取access_token地址
         /// </summary>
-        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync(string code, string redirectUri)
+        protected override async Task<OAuthTokenResponse> ExchangeCodeAsync([NotNull] OAuthCodeExchangeContext context)
         {
             //1，设置url get请求参数
             var address = QueryHelpers.AddQueryString(Options.TokenEndpoint, new Dictionary<string, string>()
@@ -208,17 +208,17 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
 
                 return OAuthTokenResponse.Failed(new Exception("An error occurred while retrieving an access token."));
             }
-            var payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-            if (!(payload.Value<int>("errcode")==0))
-            {
-                Logger.LogError("An error occurred while retrieving an access token: the remote server " +
-                                "returned a {Status} response with the following payload: {Headers} {Body}.",
-                                /* Status: */ response.StatusCode,
-                                /* Headers: */ response.Headers.ToString(),
-                                /* Body: */ await response.Content.ReadAsStringAsync());
+            var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            //if (!(payload.RootElement.getnt32("errcode") ==0))
+            //{
+            //    Logger.LogError("An error occurred while retrieving an access token: the remote server " +
+            //                    "returned a {Status} response with the following payload: {Headers} {Body}.",
+            //                    /* Status: */ response.StatusCode,
+            //                    /* Headers: */ response.Headers.ToString(),
+            //                    /* Body: */ await response.Content.ReadAsStringAsync());
 
-                return OAuthTokenResponse.Failed(new Exception("An error occurred while retrieving an access token."));
-            }
+            //    return OAuthTokenResponse.Failed(new Exception("An error occurred while retrieving an access token."));
+            //}
             return OAuthTokenResponse.Success(payload);
         }
 
@@ -245,7 +245,7 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
             // 获取用户基本信息的post参数:用户授权码
             Dictionary<string, string> param = new Dictionary<string, string>();
             param.Add("tmp_auth_code", code);
-            var stringContent = new StringContent(JsonConvert.SerializeObject(param), Encoding.UTF8, "application/json");
+            var stringContent = new StringContent(JsonSerializer.Serialize(param), Encoding.UTF8, "application/json");
             #endregion
 
             #region 2，发送请求并取得数据
@@ -262,9 +262,9 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
                 throw new HttpRequestException("An error occurred while retrieving persistent code.");
 
             }
-            var payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-
-            if (!(payload.Value<int>("errcode") == 0))
+            var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            int errorcode = int.Parse(payload.RootElement.GetString("errcode"));
+            if (!(errorcode == 0))
             {
                 Logger.LogError("An error occurred while retrieving the persistent code: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
@@ -288,7 +288,7 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
             param = new Dictionary<string, string>();
             param.Add("openid", persistentDodeDTO.OpenId);
             param.Add("persistent_code", persistentDodeDTO.Persistent_Code);
-            stringContent = new StringContent(JsonConvert.SerializeObject(param), Encoding.UTF8, "application/json");
+            stringContent = new StringContent(JsonSerializer.Serialize(param), Encoding.UTF8, "application/json");
 
             #region 2，发送请求并取得数据
             response = await Backchannel.PostAsync(address, stringContent);
@@ -304,9 +304,9 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
                 throw new HttpRequestException("An error occurred while retrieving SNS_TOKEN.");
 
             }
-            payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-
-            if (!(payload.Value<int>("errcode") == 0))
+            payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            errorcode = int.Parse(payload.RootElement.GetString("errcode"));
+            if (!(errorcode == 0))
             {
                 Logger.LogError("An error occurred while retrieving the SNS_TOKEN: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
@@ -342,8 +342,10 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
                 throw new HttpRequestException("An error occurred while retrieving user information.");
             }
 
-            payload = JObject.Parse(await response.Content.ReadAsStringAsync());
-            if (!(payload.Value<int>("errcode") == 0))
+            payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            errorcode = int.Parse(payload.RootElement.GetString("errcode"));
+            
+            if (!(errorcode == 0))
             {
                 Logger.LogError("An error occurred while retrieving the user profile: the remote server " +
                                 "returned a {Status} response with the following payload: {Headers} {Body}.",
@@ -378,7 +380,7 @@ namespace Microsoft.AspNetCore.Authentication.DingTalk
             identity.AddClaim(new Claim("urn:dingtalk:unionid", loginUserInfoDTO.UnionId, Options.ClaimsIssuer));
             identity.AddClaim(new Claim("urn:dingtalk:userinfo", DingTalkAuthenticationHelper.GetUserInfo(payload), Options.ClaimsIssuer));
             //5，初始化一个OAuth正在创建ticket的上下文
-            var context = new OAuthCreatingTicketContext(new ClaimsPrincipal(identity), properties, Context, Scheme, Options, Backchannel, tokens, payload);
+            var context = new OAuthCreatingTicketContext(new ClaimsPrincipal(identity), properties, Context, Scheme, Options, Backchannel, tokens, payload.RootElement);
             context.RunClaimActions();
             //6，Events：OAuthEvents。Handler调用事件上的方法，这些方法（在发生处理的某些点上（提供对应用程序）的控制）
             //   CreatingTicket：在提供程序成功验证用户后调用。

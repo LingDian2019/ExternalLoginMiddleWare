@@ -1,22 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Claims;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Authentication_Test.Models;
+﻿using Authentication_Test.Models;
 using Authentication_Test.Models.AccountViewModels;
 using Authentication_Test.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.DingTalk;
 using Microsoft.AspNetCore.Authentication.QQ;
 using Microsoft.AspNetCore.Authentication.Weixin;
 using Microsoft.AspNetCore.Authentication.WXWork;
-using Microsoft.AspNetCore.Authentication.DingTalk;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Threading.Tasks;
 
 namespace Authentication_Test.Controllers
 {
