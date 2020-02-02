@@ -9,6 +9,7 @@
     <RepositoryType>github</RepositoryType>
     <PackageTags>WXWork, security, aspnet core, authentication</PackageTags>
     <Version>3.1.0</Version>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/geffzhang/ExternalLoginMiddleWare</RepositoryUrl>
     <PackageProjectUrl>https://github.com/geffzhang/ExternalLoginMiddleWare</PackageProjectUrl>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
