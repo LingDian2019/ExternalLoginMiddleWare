@@ -90,10 +90,11 @@ namespace Microsoft.AspNetCore.Authentication.WXWork
         public static string GetAgent(JsonDocument user)
         {
             var value = user.RootElement.GetString("agent");
-            if (value == null)
+            if (string.IsNullOrEmpty(value))
             {
                 return null;
             }
+            
             return value;
         }
     }
